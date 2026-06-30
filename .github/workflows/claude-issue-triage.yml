@@ -1,0 +1,50 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  triage:
+    # Skip if handled by @claude mention workflow; skip bot-generated events
+    if: |
+      github.actor != 'github-actions[bot]' &&
+      !contains(github.event.issue.body, '@claude') &&
+      !contains(github.event.issue.title, '@claude')
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Triage issue with Claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh label list:*),Bash(gh label create:*)"'
+          prompt: |
+            You are a helpful issue triage assistant for this repository. Analyze GitHub issue #${{ github.event.issue.number }} and do the following:
+
+            1. Read the issue using: gh issue view ${{ github.event.issue.number }}
+
+            2. Label the issue:
+               - Run: gh label list
+               - Apply the most fitting existing labels. If no suitable label exists for the type or area, create one with a descriptive color (use `gh label create <name> --color <hex> --description "<desc>"`).
+               - Apply labels with: gh issue edit ${{ github.event.issue.number }} --add-label "<label1>,<label2>"
+               - Common labels to consider: bug, enhancement, question, documentation, and area/priority labels.
+
+            3. Post a diagnosis comment with:
+               - **Summary**: One sentence describing the problem.
+               - **Suspected area**: Which part of the codebase or system is likely involved.
+               - **Root cause hypothesis**: Your best guess at what's causing the issue.
+               - **Suggested next steps**: Concrete steps a developer should take to investigate or fix it.
+               Use: gh issue comment ${{ github.event.issue.number }} --body "<your diagnosis>"
+
+            Be concise and technical. Do not ask for clarification — make your best assessment from the available information.
